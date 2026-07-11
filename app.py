@@ -39,7 +39,7 @@ if len(current_stock_list) > 1:
         st.warning(f"Removed {remove_stock}!")
         st.rerun()
 
-# 3. Calculate Returns
+# 3. Calculate Returns for 1d, 3d, 1w, 1m, 2m, 3m, 6m, 1yr
 time_frames = {
     "1 Day": 1, "3 Days": 3, "1 Week": 7, "1 Month": 30,
     "2 Months": 60, "3 Months": 90, "6 Months": 180, "1 Year": 365
@@ -51,14 +51,16 @@ today = datetime.today()
 with st.spinner("Fetching live stock data... Please wait."):
     for ticker in current_stock_list:
         try:
-            # Download data
-            df = yf.download(ticker, start=(today - timedelta(days=500)).strftime('%Y-%m-%d'), end=today.strftime('%Y-%m-%d'), progress=False)
+            # 🔥 FIX: Added multi_level_index=False to prevent multi-header calculation crashes!
+            df = yf.download(
+                ticker, 
+                start=(today - timedelta(days=500)).strftime('%Y-%m-%d'), 
+                end=today.strftime('%Y-%m-%d'), 
+                progress=False,
+                multi_level_index=False
+            )
             
-            if not df.empty:
-                # 🔥 FIX: Flatten the multi-layered columns to prevent errors!
-                if isinstance(df.columns, pd.MultiIndex):
-                    df.columns = df.columns.get_level_values(0)
-                
+            if not df.empty and 'Close' in df.columns:
                 current_close = float(df['Close'].iloc[-1])
                 row = {"Stock/Index": ticker, "Current Price": round(current_close, 2)}
                 
