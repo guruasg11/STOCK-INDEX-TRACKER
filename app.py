@@ -4,29 +4,44 @@ import requests
 from datetime import datetime, timedelta
 
 st.set_page_config(page_title="Advanced Indian Market Tracker", layout="wide")
-st.title("📈 Advanced Indian Market Sector Dashboard")
+st.title("📈 Complete NSE Market Sector Dashboard")
 
-# 🏛️ Full NSE Autocomplete Dictionary Catalog 
-NSE_CATALOG = {
-    "HINDUNILVR (Hindustan Unilever Ltd)": "HINDUNILVR.NS",
-    "RELIANCE (Reliance Industries Ltd)": "RELIANCE.NS",
-    "TCS (Tata Consultancy Services Ltd)": "TCS.NS",
-    "HDFCBANK (HDFC Bank Ltd)": "HDFCBANK.NS",
-    "INFY (Infosys Ltd)": "INFY.NS",
-    "SBIN (State Bank of India)": "SBIN.NS",
-    "ICICIBANK (ICICI Bank Ltd)": "ICICIBANK.NS",
-    "AXISBANK (Axis Bank Ltd)": "AXISBANK.NS",
-    "WIPRO (Wipro Ltd)": "WIPRO.NS",
-    "TECHM (Tech Mahindra Ltd)": "TECHM.NS",
-    "ITC (ITC Ltd)": "ITC.NS",
-    "NESTLEIND (Nestle India Ltd)": "NESTLEIND.NS",
-    "BHARTIARTL (Bharti Airtel Ltd)": "BHARTIARTL.NS",
-    "TATAMOTORS (Tata Motors Ltd)": "TATAMOTORS.NS",
-    "NIFTY 50 INDEX": "^NSEI",
-    "BANK NIFTY INDEX": "^NSEBANK",
-    "NIFTY IT INDEX": "^CNXIT",
-    "NIFTY FMCG INDEX": "^CNXFMCG"
-}
+# 📥 AUTOMATIC NSE MASTER LIST SCANNER
+@st.cache_data(ttl=86400)  # Caches the list for 24 hours so it stays fast
+def load_all_nse_symbols():
+    """Fetches the official master list of all active stocks trading on the NSE"""
+    try:
+        # Download the complete CSV file directly from official market indices sources
+        url = "https://niftyindices.com/IndexConstituent/ind_niftytotalmarket_list.csv"
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        response = requests.get(url, headers=headers, timeout=10)
+        
+        if response.status_code == 200:
+            lines = response.text.split('\n')
+            symbols = []
+            for line in lines[1:]: # Skip the header row
+                cols = line.split(',')
+                if len(cols) > 1:
+                    symbol = cols[1].strip().replace('"', '')
+                    company = cols[0].strip().replace('"', '')
+                    if symbol and company:
+                        symbols.append(f"{symbol} ({company})")
+            return sorted(symbols)
+    except Exception:
+        pass
+    
+    # Backup essential list if network timeout occurs during initialization
+    return [
+        "HINDUNILVR (Hindustan Unilever Ltd)", "RELIANCE (Reliance Industries Ltd)", 
+        "TCS (Tata Consultancy Services Ltd)", "HDFCBANK (HDFC Bank Ltd)", 
+        "INFY (Infosys Ltd)", "SBIN (State Bank of India)", "ICICIBANK (ICICI Bank Ltd)",
+        "AXISBANK (Axis Bank Ltd)", "WIPRO (Wipro Ltd)", "TECHM (Tech Mahindra Ltd)", 
+        "ITC (ITC Ltd)", "NESTLEIND (Nestle India Ltd)", "BHARTIARTL (Bharti Airtel Ltd)",
+        "TATAMOTORS (Tata Motors Ltd)"
+    ]
+
+with st.spinner("Initializing master database of all NSE listed instruments..."):
+    all_nse_stocks = load_all_nse_symbols()
 
 # 1. Background memory setup (Session State)
 if "sectors_data" not in st.session_state:
@@ -39,7 +54,7 @@ if "sectors_data" not in st.session_state:
 
 st.sidebar.header("⚙️ Configuration Console")
 
-# 🆕 FEATURE 1: Add a Brand New Custom Sector Manually
+# Create New Sector Manually
 st.sidebar.subheader("📁 Create New Sector")
 new_sector_name = st.sidebar.text_input("New Sector Name (e.g., Pharma Sector)").strip()
 if st.sidebar.button("Create Sector"):
@@ -52,20 +67,23 @@ if st.sidebar.button("Create Sector"):
 selected_sector = st.sidebar.selectbox("Select Active Dashboard", list(st.session_state.sectors_data.keys()))
 current_stock_list = st.session_state.sectors_data[selected_sector]
 
-# 🆕 FEATURE 2: Add Stock via Interactive NSE Autocomplete Dropdown
+# Add Stock via Real-Time Dynamic NSE Catalog Selectbox
 st.sidebar.subheader("➕ Add Stock to Sector")
 search_selection = st.sidebar.selectbox(
-    "Type Company Name / Ticker:", 
-    options=[""] + list(NSE_CATALOG.keys()),
-    placeholder="Search (e.g., HUL, Reliance, Info...)"
+    "Search All NSE Stocks:", 
+    options=[""] + all_nse_stocks,
+    placeholder="Type to search (e.g., HUL, Reliance, Tata...)"
 )
 
 if st.sidebar.button("Confirm and Add Stock"):
     if search_selection:
-        ticker_to_add = NSE_CATALOG[search_selection]
+        # Extract the pure symbol handle from the dropdown string parentheses format
+        pure_symbol = search_selection.split(" ")[0].strip()
+        ticker_to_add = pure_symbol if "^" in pure_symbol else f"{pure_symbol}.NS"
+        
         if ticker_to_add not in current_stock_list:
             st.session_state.sectors_data[selected_sector].append(ticker_to_add)
-            st.success(f"Added {ticker_to_add} to {selected_sector}!")
+            st.success(f"Added {pure_symbol} to {selected_sector}!")
             st.rerun()
 
 # Remove a Stock
@@ -77,7 +95,7 @@ if current_stock_list:
         st.warning(f"Removed {remove_stock}!")
         st.rerun()
 
-# 2. Live REST API Data Fetching Core
+# 2. Live Market API Core
 def fetch_live_api_data(symbol):
     try:
         url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?range=2y&interval=1d"
@@ -103,9 +121,9 @@ time_frames = {
 matrix = []
 
 if not current_stock_list:
-    st.info("This sector folder is currently empty. Use the sidebar menu to add stock symbols.")
+    st.info("This sector folder is currently empty. Use the sidebar menu to search and add stock symbols.")
 else:
-    with st.spinner("Streaming real-time pricing and running technical screenings..."):
+    with st.spinner("Streaming data streams and calculating moving averages..."):
         for ticker in current_stock_list:
             df = fetch_live_api_data(ticker)
             
@@ -125,7 +143,7 @@ else:
                 low_52w = round(float(past_year_low.min()), 2)
                 
                 row = {
-                    "Stock/Index": ticker,
+                    "Stock/Index": ticker.replace(".NS", ""),
                     "Current Price": round(current_close, 2),
                     "4 MA": ma4, "20 MA": ma20, "50 MA": ma50,
                     "52W High": high_52w, "52W Low": low_52w
@@ -140,9 +158,8 @@ else:
                     
                 matrix.append(row)
 
-# 3. 🆕 FEATURE 3: Complex Double-Layer Matrix Element Stylers
+# 3. ADVANCED DOUBLE-LAYER STRUCTURAL HIGHLIGHTER ENGINE
 def apply_matrix_styles(df):
-    """Applies cell returns colors and moving average rules simultaneously"""
     styled = df.style
     
     # Rule A: Green background for Positive Returns, Red background for Negative Returns
@@ -154,13 +171,17 @@ def apply_matrix_styles(df):
         return ''
     styled = styled.map(style_returns, subset=return_cols)
     
-    # Rule B: Green text if Price > MA, Red text if Price < MA
+    # Rule B: Highlight 52W High with soft green background and 52W Low with soft red background
+    styled = styled.set_properties(**{'background-color': '#E8F5E9', 'color': '#2E7D32', 'font-weight': 'bold'}, subset=["52W High"])
+    styled = styled.set_properties(**{'background-color': '#FFEBEE', 'color': '#C62828', 'font-weight': 'bold'}, subset=["52W Low"])
+    
+    # Rule C: Green text if Price > MA, Red text if Price < MA
     for idx in df.index:
         current_price = df.loc[idx, "Current Price"]
         for ma_col in ["4 MA", "20 MA", "50 MA"]:
             ma_val = df.loc[idx, ma_col]
             if pd.notna(ma_val) and pd.notna(current_price):
-                color = "#2E7D32" if current_price > ma_val else "#C62828" # Dark Green vs Dark Red text
+                color = "#2E7D32" if current_price > ma_val else "#C62828"
                 styled = styled.set_properties(
                     **{'color': color, 'font-weight': 'bold'},
                     subset=pd.IndexSlice[[idx], [ma_col]]
